@@ -134,17 +134,23 @@ function segsWithStart(day){
   (day.segments||[]).forEach(s=>{out.push({...s,start:hm(t)});t+=s.min;});
   return out;
 }
+const STAGE_MAP={"コア":"core","深い":"deep","レム":"rem","覚醒":"awake","core":"core","deep":"deep","rem":"rem","awake":"awake","asleepcore":"core","asleepdeep":"deep","asleeprem":"rem"};
+function mapStage(s){const k=String(s||"").trim();return STAGE_MAP[k]||STAGE_MAP[k.toLowerCase()]||"";}
+function durToSec(str){const p=String(str||"").trim().split(":").map(x=>Number(x)||0);if(p.length===1)return p[0];if(p.length===2)return p[0]*60+p[1];if(p.length===3)return p[0]*3600+p[1]*60+p[2];return 0;}
 function normalizeDay(d){
-  if(d && d.stagesCSV && d.secsCSV){
+  if(!d)return d;
+  if(d.date)d.date=String(d.date).trim();
+  if(d.bedtime)d.bedtime=String(d.bedtime).trim();
+  if(d.stagesCSV && d.secsCSV){
     const st=String(d.stagesCSV).split(","), sc=String(d.secsCSV).split(",");
-    d.segments=st.map((s,i)=>({stage:String(s||"").trim().toLowerCase(),min:Math.round((+sc[i]||0)/60)}))
-      .filter(x=>COL[x.stage]&&x.min>0);
+    d.segments=st.map((s,i)=>({stage:mapStage(s),min:durToSec(sc[i])/60}))
+      .filter(x=>x.stage&&COL[x.stage]&&x.min>0);
   }
   if(d && d.segments && d.segments.length){
     if(!d.stages){
       const tot={deep:0,core:0,rem:0,awake:0};
       d.segments.forEach(s=>{tot[s.stage]=(tot[s.stage]||0)+s.min;});
-      d.stages=tot;
+      d.stages={deep:Math.round(tot.deep),core:Math.round(tot.core),rem:Math.round(tot.rem),awake:Math.round(tot.awake)};
     }
     if(!d.waketime && d.bedtime){
       const span=d.segments.reduce((a,s)=>a+s.min,0);
