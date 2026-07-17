@@ -120,7 +120,7 @@ const SVGNS = "http://www.w3.org/2000/svg";
 const RM = matchMedia("(prefers-reduced-motion:reduce)").matches;
 
 function toMin(hm){const [h,m]=hm.split(":").map(Number);return h*60+m;}
-function hm(min){min=((min%1440)+1440)%1440;const h=Math.floor(min/60),m=min%60;return `${h}:${String(m).padStart(2,"0")}`;}
+function hm(min){min=((Math.round(min)%1440)+1440)%1440;const h=Math.floor(min/60),m=min%60;return `${h}:${String(m).padStart(2,"0")}`;}
 function fmtDur(min){const h=Math.floor(min/60),m=min%60;return h>0?`${h}時間${m}分`:`${m}分`;}
 function mmdd(d){const p=d.split("-");return `${Number(p[1])}/${Number(p[2])}`;}
 function asleep(st){return st.deep+st.core+st.rem;}
