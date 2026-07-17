@@ -134,6 +134,14 @@ function segsWithStart(day){
   (day.segments||[]).forEach(s=>{out.push({...s,start:hm(t)});t+=s.min;});
   return out;
 }
+function normalizeDay(d){
+  if(d && d.stagesCSV && d.secsCSV){
+    const st=String(d.stagesCSV).split(","), sc=String(d.secsCSV).split(",");
+    d.segments=st.map((s,i)=>({stage:String(s||"").trim().toLowerCase(),min:Math.round((+sc[i]||0)/60)}))
+      .filter(x=>COL[x.stage]&&x.min>0);
+  }
+  return d;
+}
 function synth(st,start){
   const cy=5,segs=[];let t=start;
   const wD=[0.35,0.28,0.18,0.12,0.07],wR=[0.06,0.12,0.22,0.28,0.32],wA=[0.15,0.2,0.3,0.2,0.15];
@@ -345,7 +353,7 @@ async function loadData(){
   try{
     const list=await fetch(`https://api.github.com/repos/${REPO}/contents/data`).then(r=>r.json());
     const files=(Array.isArray(list)?list:[]).filter(f=>f.name.endsWith(".json"));
-    const days=await Promise.all(files.map(f=>fetch(f.download_url).then(r=>r.json())));
+    const days=(await Promise.all(files.map(f=>fetch(f.download_url).then(r=>r.json())))).map(normalizeDay);
     return days.length?days.sort((a,b)=>a.date<b.date?-1:1):SAMPLE;
   }catch(e){return SAMPLE;}
 }
