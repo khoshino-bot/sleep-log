@@ -140,6 +140,17 @@ function normalizeDay(d){
     d.segments=st.map((s,i)=>({stage:String(s||"").trim().toLowerCase(),min:Math.round((+sc[i]||0)/60)}))
       .filter(x=>COL[x.stage]&&x.min>0);
   }
+  if(d && d.segments && d.segments.length){
+    if(!d.stages){
+      const tot={deep:0,core:0,rem:0,awake:0};
+      d.segments.forEach(s=>{tot[s.stage]=(tot[s.stage]||0)+s.min;});
+      d.stages=tot;
+    }
+    if(!d.waketime && d.bedtime){
+      const span=d.segments.reduce((a,s)=>a+s.min,0);
+      d.waketime=hm(toMin(d.bedtime)+span);
+    }
+  }
   return d;
 }
 function synth(st,start){
@@ -296,12 +307,13 @@ function renderStats(){
   const win=DAYS.slice(-range),latest=DAYS[cur];
   const avg=Math.round(win.reduce((a,d)=>a+asleep(d.stages),0)/win.length);
   const deepPct=Math.round(latest.stages.deep/asleep(latest.stages)*100);
-  const hrAvg=Math.round(win.reduce((a,d)=>a+(d.hr&&d.hr.avg||0),0)/win.length);
+  const hrDays=win.filter(d=>d.hr&&d.hr.avg);
+  const hrAvg=hrDays.length?Math.round(hrDays.reduce((a,d)=>a+d.hr.avg,0)/hrDays.length):null;
   const cards=[
     {l:"選択日の睡眠",v:fmtDur(asleep(latest.stages))},
     {l:`${range}日平均`,v:fmtDur(avg)},
     {l:"深い睡眠(選択日)",v:String(deepPct),u:"%"},
-    {l:`平均心拍(${range}日)`,v:String(hrAvg),u:"bpm"},
+    {l:`平均心拍(${range}日)`,v:hrAvg!=null?String(hrAvg):"—",u:hrAvg!=null?"bpm":""},
   ];
   const box=document.getElementById("stats");box.replaceChildren();
   cards.forEach(c=>{const d=elc("div","stat");const l=elc("p","l");l.textContent=c.l;
