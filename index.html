@@ -35,14 +35,16 @@
   .total{font-size:40px;font-weight:700;letter-spacing:-1px;line-height:1.05}
   .total small{font-size:17px;font-weight:500;color:var(--sub);margin:0 3px 0 1px}
   .times{font-size:13px;color:var(--sub);text-align:right;line-height:1.5}
-  .score{display:flex;align-items:center;gap:12px;margin:10px 0 2px}
-  .score .ring{position:relative;width:54px;height:54px;flex:0 0 auto}
-  .score .ring svg{transform:rotate(-90deg);display:block}
-  .score .ring circle.fg{transition:stroke-dashoffset .8s cubic-bezier(.2,.7,.2,1)}
-  .score .ring .n{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;letter-spacing:-0.5px}
-  .score .meta{display:flex;flex-direction:column;gap:1px}
-  .score .meta .t{font-size:12px;color:var(--sub)}
-  .score .meta .c{font-size:17px;font-weight:700}
+  .scard .st{font-size:14px;font-weight:700;color:#8B87F0;margin:0 0 10px;letter-spacing:.02em}
+  .scard .row{display:flex;justify-content:space-between;align-items:center;gap:14px}
+  .scard .lab{font-size:38px;font-weight:800;line-height:1.05;margin:0 0 14px;letter-spacing:-0.5px}
+  .scard .bd{display:flex;flex-direction:column;gap:9px}
+  .scard .bd .it{display:flex;align-items:center;gap:10px;font-size:16px;font-weight:600;color:var(--text)}
+  .scard .bd .dot{width:12px;height:12px;border-radius:50%;flex:0 0 auto}
+  .scard .ring2{position:relative;width:118px;height:118px;flex:0 0 auto}
+  .scard .ring2 svg{display:block}
+  .scard .ring2 .n{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:40px;font-weight:800;letter-spacing:-1px}
+  .scard .exp{border-top:1px solid var(--line);margin-top:16px;padding-top:14px;font-size:15px;line-height:1.65;color:var(--text)}
   .hint{font-size:11px;color:var(--muted);margin:2px 0 8px}
   .hypno-wrap{position:relative;touch-action:pan-y}
   .hypno{width:100%;height:auto;display:block}
@@ -93,7 +95,6 @@
       <div class="total" id="total"></div>
       <div class="times" id="times"></div>
     </div>
-    <div class="score" id="score"></div>
     <p class="hint">← スワイプで日付切替 ・ 帯をタップで時間帯 →</p>
     <div class="hypno-wrap" id="hypnoWrap">
       <svg class="hypno" id="hypno" viewBox="0 0 1000 680" preserveAspectRatio="xMidYMid meet" role="img" aria-label="睡眠ステージの時間推移グラフ"></svg>
@@ -101,6 +102,8 @@
     </div>
     <div class="legend" id="legend"></div>
   </div>
+
+  <div class="card scard" id="scoreCard"></div>
 
   <div class="card">
     <p class="h2">睡眠時間の推移</p>
@@ -304,12 +307,7 @@ function countUp(total){
   const step=ts=>{if(!st)st=ts;const p=Math.min(1,(ts-st)/dur);const e=1-Math.pow(1-p,3);build(Math.round(total*e));if(p<1)requestAnimationFrame(step);};
   requestAnimationFrame(step);
 }
-// 独自睡眠スコア（0-100）: 睡眠時間50% / 深い20% / レム15% / 効率15%。Apple公式値ではない簡易評価。
-function band(v,lo,hi,floor,ceil){
-  if(v>=lo&&v<=hi)return 100;
-  if(v<lo)return Math.max(0,(v-floor)/(lo-floor)*100);
-  return Math.max(0,(ceil-v)/(ceil-hi)*100);
-}
+// 独自睡眠スコア（Apple公式に寄せた100点満点・3要素: 睡眠時間50/就寝時刻30/睡眠中断20）。Apple内部値ではない簡易評価。
 function scoreBand(s){
   if(s>=96)return["非常に高い","#10B981"];
   if(s>=81)return["高い","#46C7F5"];
@@ -317,41 +315,68 @@ function scoreBand(s){
   if(s>=41)return["低い","#FF9F45"];
   return["非常に低い","#EF4444"];
 }
+// 就寝時刻の規則性: 直近の就寝時刻とのズレが小さいほど高い（データ3日未満は満点扱い）
+function bedtimeConsistency(day){
+  function nm(bt){if(!bt)return null;const p=String(bt).split(":");const h=+p[0],m=+p[1];if(isNaN(h))return null;let x=h*60+(m||0);if(h<12)x+=1440;return x;}
+  const today=nm(day.bedtime);if(today==null)return 30;
+  const others=(typeof DAYS!=="undefined"?DAYS:[]).filter(d=>d.date!==day.date&&d.bedtime).map(d=>nm(d.bedtime)).filter(v=>v!=null).slice(-14);
+  if(others.length<3)return 30;
+  const mean=others.reduce((a,b)=>a+b,0)/others.length;
+  const diff=Math.abs(today-mean);
+  return Math.round(30*Math.max(0,Math.min(1,(110-diff)/90)));
+}
 function sleepScore(day){
   const st=day.stages;if(!st)return null;
   const a=asleep(st);if(a<=0)return null;
-  const inBed=a+(st.awake||0);
-  let dur;
-  if(a>=420&&a<=540)dur=100;
-  else if(a<420)dur=a/420*100;
-  else dur=Math.max(70,100-(a-540)/6);
-  const deep=band(st.deep/a*100,13,23,4,35);
-  const rem=band(st.rem/a*100,20,28,8,42);
-  const eff=inBed>0?a/inBed*100:100;
-  const efc=eff>=92?100:Math.max(0,(eff-60)/32*100);
-  let s=Math.round(0.5*dur+0.2*deep+0.15*rem+0.15*efc);
-  s=Math.max(0,Math.min(100,s));
+  const durP=Math.round(Math.max(0,Math.min(1,a/480))*50);                          // 目標8時間(480分)
+  const bedP=bedtimeConsistency(day);                                                // 就寝時刻の規則性
+  const awake=st.awake||0;
+  const intP=Math.round(20*Math.max(0,Math.min(1,(90-Math.max(0,awake-15))/75)));    // 覚醒15分以内で満点,90分で0
+  const s=Math.max(0,Math.min(100,durP+bedP+intP));
   const [label,color]=scoreBand(s);
-  return {score:s,label,color};
+  const parts=[
+    {name:"睡眠時間",pts:durP,max:50,color:"#2E7DF6",dim:"rgba(46,125,246,0.22)"},
+    {name:"就寝時刻",pts:bedP,max:30,color:"#2DD4BF",dim:"rgba(45,212,191,0.22)"},
+    {name:"睡眠中断",pts:intP,max:20,color:"#FF7A5A",dim:"rgba(255,122,90,0.22)"},
+  ];
+  let explain;
+  if(s>=81)explain=`しっかり眠れていて、${s}点でした。`;
+  else{
+    const w=parts.reduce((x,p)=>(p.pts/p.max<=x.pts/x.max?p:x));
+    const r=w.name==="睡眠時間"?"睡眠時間が目標より短かった":w.name==="就寝時刻"?"就寝時刻がいつもと違った":"夜中に目が覚めていた時間があった";
+    explain=`${r}ため、${s}点でした。`;
+  }
+  return {score:s,label,color,parts,explain};
+}
+function buildScoreRing(sc){
+  const R=50,W=11,C=2*Math.PI*R,GAP=16;
+  const svg=svgEl("svg",{viewBox:"0 0 118 118",width:"118",height:"118"});
+  svg.setAttribute("style","transform:rotate(-90deg)");
+  const usable=C-GAP*sc.parts.length;let off=GAP/2;
+  sc.parts.forEach(p=>{
+    const seg=usable*(p.max/100);
+    svg.appendChild(svgEl("circle",{cx:59,cy:59,r:R,fill:"none",stroke:p.dim,"stroke-width":W,"stroke-linecap":"round","stroke-dasharray":seg.toFixed(2)+" "+(C-seg).toFixed(2),"stroke-dashoffset":(-off).toFixed(2)}));
+    const fill=seg*(p.pts/p.max);
+    if(fill>1)svg.appendChild(svgEl("circle",{cx:59,cy:59,r:R,fill:"none",stroke:p.color,"stroke-width":W,"stroke-linecap":"round","stroke-dasharray":fill.toFixed(2)+" "+(C-fill).toFixed(2),"stroke-dashoffset":(-off).toFixed(2)}));
+    off+=seg+GAP;
+  });
+  return svg;
 }
 function renderScore(day){
-  const host=document.getElementById("score");host.replaceChildren();
-  const sc=sleepScore(day);if(!sc)return;
-  const R=24,C=2*Math.PI*R;
-  const ring=elc("div","ring");
-  const svg=svgEl("svg",{viewBox:"0 0 54 54",width:"54",height:"54"});
-  svg.appendChild(svgEl("circle",{cx:27,cy:27,r:R,fill:"none",stroke:"var(--card2)","stroke-width":"5"}));
-  const fg=svgEl("circle",{class:"fg",cx:27,cy:27,r:R,fill:"none",stroke:sc.color,"stroke-width":"5","stroke-linecap":"round","stroke-dasharray":C.toFixed(1),"stroke-dashoffset":C.toFixed(1)});
-  svg.appendChild(fg);
-  const n=elc("div","n");n.textContent=sc.score;n.style.color=sc.color;
-  ring.append(svg,n);
-  const meta=elc("div","meta");
-  const t=elc("div","t");t.textContent="睡眠スコア";
-  const c=elc("div","c");c.textContent=sc.label;c.style.color=sc.color;
-  meta.append(t,c);host.append(ring,meta);
-  const off=(C*(1-sc.score/100)).toFixed(1);
-  if(RM)fg.setAttribute("stroke-dashoffset",off);
-  else requestAnimationFrame(()=>fg.setAttribute("stroke-dashoffset",off));
+  const host=document.getElementById("scoreCard");if(!host)return;host.replaceChildren();
+  const sc=sleepScore(day);
+  if(!sc){host.style.display="none";return;}
+  host.style.display="";
+  const st=elc("p","st");st.textContent="睡眠スコア";host.appendChild(st);
+  const row=elc("div","row");
+  const left=elc("div");
+  const lab=elc("p","lab");lab.textContent=sc.label;lab.style.color=sc.color;left.appendChild(lab);
+  const bd=elc("div","bd");
+  sc.parts.forEach(p=>{const it=elc("div","it");const dot=elc("span","dot");dot.style.background=p.color;const tx=document.createElement("span");tx.textContent=`${p.name}: ${p.pts}/${p.max}`;it.append(dot,tx);bd.appendChild(it);});
+  left.appendChild(bd);
+  const ring=elc("div","ring2");ring.append(buildScoreRing(sc));const n=elc("div","n");n.textContent=sc.score;n.style.color=sc.color;ring.append(n);
+  row.append(left,ring);host.appendChild(row);
+  const exp=elc("p","exp");exp.textContent=sc.explain;host.appendChild(exp);
 }
 function renderHero(day,animate){
   renderScore(day);
