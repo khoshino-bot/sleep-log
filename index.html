@@ -19,7 +19,16 @@
     font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif;
     -webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
   body{overscroll-behavior-y:contain}
-  .wrap{max-width:480px;margin:0 auto;padding:calc(18px + var(--safe-t)) 16px calc(40px + var(--safe-b))}
+  .wrap{max-width:480px;margin:0 auto;padding:calc(18px + var(--safe-t)) 16px calc(40px + var(--safe-b));position:relative;z-index:1}
+  #bgfx{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none}
+  .orb{position:absolute;border-radius:50%;background:#2a2a33 url("face.jpg") center/cover;
+    transform:translate(-50%,-50%);will-change:transform;animation:floaty linear infinite;
+    box-shadow:0 10px 30px rgba(0,0,0,.35)}
+  @keyframes floaty{
+    0%{transform:translate(-50%,-50%) translate(0,0) rotate(0)}
+    50%{transform:translate(-50%,-50%) translate(var(--dx),var(--dy)) rotate(var(--r))}
+    100%{transform:translate(-50%,-50%) translate(0,0) rotate(0)}
+  }
   .head{display:flex;align-items:baseline;justify-content:space-between;margin:0 0 16px}
   h1{font-size:26px;font-weight:700;margin:0;letter-spacing:-0.4px}
   .lead{font-size:14px;color:var(--sub);margin:2px 0 0}
@@ -83,6 +92,7 @@
 </style>
 </head>
 <body>
+<div id="bgfx" aria-hidden="true"></div>
 <div class="wrap">
   <div class="head">
     <div><h1>睡眠ログ</h1><p class="lead" id="lead">読み込み中…</p></div>
@@ -479,7 +489,27 @@ async function loadData(){
     return days.length?days.sort((a,b)=>a.date<b.date?-1:1):SAMPLE;
   }catch(e){return SAMPLE;}
 }
+function initBg(){
+  const host=document.getElementById("bgfx");if(!host)return;
+  const N=window.innerWidth<520?16:24;
+  for(let i=0;i<N;i++){
+    const o=elc("div","orb");
+    const size=Math.round(34+Math.random()*140);
+    o.style.width=o.style.height=size+"px";
+    o.style.left=(Math.random()*100).toFixed(1)+"%";
+    o.style.top=(Math.random()*100).toFixed(1)+"%";
+    o.style.opacity=(0.2+Math.random()*0.35).toFixed(2);
+    const dur=(14+Math.random()*22).toFixed(1);
+    o.style.animationDuration=dur+"s";
+    o.style.animationDelay=(-Math.random()*dur).toFixed(1)+"s";
+    o.style.setProperty("--dx",Math.round(Math.random()*120-60)+"px");
+    o.style.setProperty("--dy",Math.round(Math.random()*120-60)+"px");
+    o.style.setProperty("--r",Math.round(Math.random()*40-20)+"deg");
+    host.appendChild(o);
+  }
+}
 (async function(){
+  initBg();
   DAYS=await loadData();cur=DAYS.length-1;
   buildNav();
   selectDate(DAYS[cur].date,true);
