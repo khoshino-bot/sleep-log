@@ -162,6 +162,7 @@ function durToSec(str){const p=String(str||"").trim().split(":").map(x=>Number(x
 // startsCSV の1要素 "yyyy-MM-dd HH:mm"（末尾スペース許容）→ 絶対分（UTC計算で時刻の見た目をそのまま保持）
 function parseAbs(s){const m=String(s||"").trim().match(/(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{2})/);return m?Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5])/60000:null;}
 function hmAbs(minAbs){const d=new Date(Math.round(minAbs)*60000);return `${d.getUTCHours()}:${String(d.getUTCMinutes()).padStart(2,"0")}`;}
+function dateAbs(minAbs){const d=new Date(Math.round(minAbs)*60000);return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}-${String(d.getUTCDate()).padStart(2,"0")}`;}
 const SESSION_GAP=120; // 分。これ以上の空きは別セッション（昼寝と夜間睡眠の分割用）
 function normalizeDay(d){
   if(!d)return d;
@@ -181,7 +182,9 @@ function normalizeDay(d){
       }
       items=items.slice(s0);
       d.bedtime=hmAbs(items[0].abs);
-      d.waketime=hmAbs(items[items.length-1].abs+items[items.length-1].min);
+      const wakeAbs=items[items.length-1].abs+items[items.length-1].min;
+      d.waketime=hmAbs(wakeAbs);
+      d.date=dateAbs(wakeAbs); // 実行日でなく実際に起きた日を採用（日付ズレ防止）
       d.stages=null; // 絞り込み後のセグメントから再集計させる
       d.segments=items.map(x=>({stage:x.stage,min:x.min,start:hmAbs(x.abs)}));
     }else{
@@ -486,7 +489,11 @@ async function loadData(){
     const list=await fetch(`https://api.github.com/repos/${REPO}/contents/data`).then(r=>r.json());
     const files=(Array.isArray(list)?list:[]).filter(f=>f.name.endsWith(".json"));
     const days=(await Promise.all(files.map(f=>fetch(f.download_url).then(r=>r.json())))).map(normalizeDay);
-    return days.length?days.sort((a,b)=>a.date<b.date?-1:1):SAMPLE;
+    // 実日付で重複排除（同じ日が複数ファイルに来たら区間数が多い方を採用）
+    const byDate={};
+    days.forEach(d=>{if(!d||!d.date)return;const k=String(d.date).trim();const c=(d.segments&&d.segments.length)||0;if(!byDate[k]||c>((byDate[k].segments&&byDate[k].segments.length)||0))byDate[k]=d;});
+    const uniq=Object.values(byDate);
+    return uniq.length?uniq.sort((a,b)=>a.date<b.date?-1:1):SAMPLE;
   }catch(e){return SAMPLE;}
 }
 function initBg(){
