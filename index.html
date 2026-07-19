@@ -35,6 +35,14 @@
   .total{font-size:40px;font-weight:700;letter-spacing:-1px;line-height:1.05}
   .total small{font-size:17px;font-weight:500;color:var(--sub);margin:0 3px 0 1px}
   .times{font-size:13px;color:var(--sub);text-align:right;line-height:1.5}
+  .score{display:flex;align-items:center;gap:12px;margin:10px 0 2px}
+  .score .ring{position:relative;width:54px;height:54px;flex:0 0 auto}
+  .score .ring svg{transform:rotate(-90deg);display:block}
+  .score .ring circle.fg{transition:stroke-dashoffset .8s cubic-bezier(.2,.7,.2,1)}
+  .score .ring .n{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;letter-spacing:-0.5px}
+  .score .meta{display:flex;flex-direction:column;gap:1px}
+  .score .meta .t{font-size:12px;color:var(--sub)}
+  .score .meta .c{font-size:17px;font-weight:700}
   .hint{font-size:11px;color:var(--muted);margin:2px 0 8px}
   .hypno-wrap{position:relative;touch-action:pan-y}
   .hypno{width:100%;height:auto;display:block}
@@ -85,6 +93,7 @@
       <div class="total" id="total"></div>
       <div class="times" id="times"></div>
     </div>
+    <div class="score" id="score"></div>
     <p class="hint">← スワイプで日付切替 ・ 帯をタップで時間帯 →</p>
     <div class="hypno-wrap" id="hypnoWrap">
       <svg class="hypno" id="hypno" viewBox="0 0 1000 680" preserveAspectRatio="xMidYMid meet" role="img" aria-label="睡眠ステージの時間推移グラフ"></svg>
@@ -108,7 +117,7 @@
     <div class="stats" id="stats"></div>
   </div>
 
-  <p class="foot">Apple Watch / ヘルスケアのデータから生成<br>睡眠スコアはApple独自値のため非対応</p>
+  <p class="foot">Apple Watch / ヘルスケアのデータから生成<br>睡眠スコアは本ページ独自の簡易評価（Apple公式値とは異なります）</p>
 </div>
 
 <script>
@@ -137,14 +146,34 @@ function segsWithStart(day){
 const STAGE_MAP={"コア":"core","深い":"deep","レム":"rem","覚醒":"awake","core":"core","deep":"deep","rem":"rem","awake":"awake","asleepcore":"core","asleepdeep":"deep","asleeprem":"rem"};
 function mapStage(s){const k=String(s||"").trim();return STAGE_MAP[k]||STAGE_MAP[k.toLowerCase()]||"";}
 function durToSec(str){const p=String(str||"").trim().split(":").map(x=>Number(x)||0);if(p.length===1)return p[0];if(p.length===2)return p[0]*60+p[1];if(p.length===3)return p[0]*3600+p[1]*60+p[2];return 0;}
+// startsCSV の1要素 "yyyy-MM-dd HH:mm"（末尾スペース許容）→ 絶対分（UTC計算で時刻の見た目をそのまま保持）
+function parseAbs(s){const m=String(s||"").trim().match(/(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{2})/);return m?Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5])/60000:null;}
+function hmAbs(minAbs){const d=new Date(Math.round(minAbs)*60000);return `${d.getUTCHours()}:${String(d.getUTCMinutes()).padStart(2,"0")}`;}
+const SESSION_GAP=120; // 分。これ以上の空きは別セッション（昼寝と夜間睡眠の分割用）
 function normalizeDay(d){
   if(!d)return d;
   if(d.date)d.date=String(d.date).trim();
   if(d.bedtime)d.bedtime=String(d.bedtime).trim();
   if(d.stagesCSV && d.secsCSV){
     const st=String(d.stagesCSV).split(","), sc=String(d.secsCSV).split(",");
-    d.segments=st.map((s,i)=>({stage:mapStage(s),min:durToSec(sc[i])/60}))
+    const stc=d.startsCSV!=null?String(d.startsCSV).split(","):[];
+    let items=st.map((s,i)=>({stage:mapStage(s),min:durToSec(sc[i])/60,abs:stc.length?parseAbs(stc[i]):null}))
       .filter(x=>x.stage&&COL[x.stage]&&x.min>0);
+    // 全サンプルに開始時刻があれば、時間の空きで最新の一晩だけに絞る
+    if(items.length && items.every(x=>x.abs!=null)){
+      items.sort((a,b)=>a.abs-b.abs);
+      let s0=0;
+      for(let i=1;i<items.length;i++){
+        if(items[i].abs-(items[i-1].abs+items[i-1].min)>SESSION_GAP)s0=i;
+      }
+      items=items.slice(s0);
+      d.bedtime=hmAbs(items[0].abs);
+      d.waketime=hmAbs(items[items.length-1].abs+items[items.length-1].min);
+      d.stages=null; // 絞り込み後のセグメントから再集計させる
+      d.segments=items.map(x=>({stage:x.stage,min:x.min,start:hmAbs(x.abs)}));
+    }else{
+      d.segments=items.map(x=>({stage:x.stage,min:x.min}));
+    }
   }
   if(d && d.segments && d.segments.length){
     if(!d.stages){
@@ -275,7 +304,57 @@ function countUp(total){
   const step=ts=>{if(!st)st=ts;const p=Math.min(1,(ts-st)/dur);const e=1-Math.pow(1-p,3);build(Math.round(total*e));if(p<1)requestAnimationFrame(step);};
   requestAnimationFrame(step);
 }
+// 独自睡眠スコア（0-100）: 睡眠時間50% / 深い20% / レム15% / 効率15%。Apple公式値ではない簡易評価。
+function band(v,lo,hi,floor,ceil){
+  if(v>=lo&&v<=hi)return 100;
+  if(v<lo)return Math.max(0,(v-floor)/(lo-floor)*100);
+  return Math.max(0,(ceil-v)/(ceil-hi)*100);
+}
+function scoreBand(s){
+  if(s>=96)return["非常に高い","#10B981"];
+  if(s>=81)return["高い","#46C7F5"];
+  if(s>=61)return["普通","#2E7DF6"];
+  if(s>=41)return["低い","#FF9F45"];
+  return["非常に低い","#EF4444"];
+}
+function sleepScore(day){
+  const st=day.stages;if(!st)return null;
+  const a=asleep(st);if(a<=0)return null;
+  const inBed=a+(st.awake||0);
+  let dur;
+  if(a>=420&&a<=540)dur=100;
+  else if(a<420)dur=a/420*100;
+  else dur=Math.max(70,100-(a-540)/6);
+  const deep=band(st.deep/a*100,13,23,4,35);
+  const rem=band(st.rem/a*100,20,28,8,42);
+  const eff=inBed>0?a/inBed*100:100;
+  const efc=eff>=92?100:Math.max(0,(eff-60)/32*100);
+  let s=Math.round(0.5*dur+0.2*deep+0.15*rem+0.15*efc);
+  s=Math.max(0,Math.min(100,s));
+  const [label,color]=scoreBand(s);
+  return {score:s,label,color};
+}
+function renderScore(day){
+  const host=document.getElementById("score");host.replaceChildren();
+  const sc=sleepScore(day);if(!sc)return;
+  const R=24,C=2*Math.PI*R;
+  const ring=elc("div","ring");
+  const svg=svgEl("svg",{viewBox:"0 0 54 54",width:"54",height:"54"});
+  svg.appendChild(svgEl("circle",{cx:27,cy:27,r:R,fill:"none",stroke:"var(--card2)","stroke-width":"5"}));
+  const fg=svgEl("circle",{class:"fg",cx:27,cy:27,r:R,fill:"none",stroke:sc.color,"stroke-width":"5","stroke-linecap":"round","stroke-dasharray":C.toFixed(1),"stroke-dashoffset":C.toFixed(1)});
+  svg.appendChild(fg);
+  const n=elc("div","n");n.textContent=sc.score;n.style.color=sc.color;
+  ring.append(svg,n);
+  const meta=elc("div","meta");
+  const t=elc("div","t");t.textContent="睡眠スコア";
+  const c=elc("div","c");c.textContent=sc.label;c.style.color=sc.color;
+  meta.append(t,c);host.append(ring,meta);
+  const off=(C*(1-sc.score/100)).toFixed(1);
+  if(RM)fg.setAttribute("stroke-dashoffset",off);
+  else requestAnimationFrame(()=>fg.setAttribute("stroke-dashoffset",off));
+}
 function renderHero(day,animate){
+  renderScore(day);
   countUp(asleep(day.stages));
   document.getElementById("times").textContent=`就寝 ${day.bedtime}\n起床 ${day.waketime}`;
   drawHypno(day,animate);
