@@ -22,12 +22,12 @@
   .wrap{max-width:480px;margin:0 auto;padding:calc(18px + var(--safe-t)) 16px calc(40px + var(--safe-b));position:relative;z-index:1}
   #bgfx{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none}
   .orb{position:absolute;border-radius:50%;background:#2a2a33 url("face.jpg") center/cover;
-    transform:translate(-50%,-50%);will-change:transform;animation:floaty linear infinite;
+    transform:translate(-50%,-50%);will-change:transform;animation:floaty ease-in-out infinite;
     box-shadow:0 10px 30px rgba(0,0,0,.35)}
   @keyframes floaty{
-    0%{transform:translate(-50%,-50%) translate(0,0) rotate(0)}
-    50%{transform:translate(-50%,-50%) translate(var(--dx),var(--dy)) rotate(var(--r))}
-    100%{transform:translate(-50%,-50%) translate(0,0) rotate(0)}
+    0%,100%{transform:translate(-50%,-50%) translate(var(--x0),var(--y0)) rotate(var(--r0)) scale(var(--s0))}
+    33%{transform:translate(-50%,-50%) translate(var(--x1),var(--y1)) rotate(var(--r1)) scale(var(--s1))}
+    66%{transform:translate(-50%,-50%) translate(var(--x2),var(--y2)) rotate(var(--r2)) scale(var(--s2))}
   }
   .head{display:flex;align-items:baseline;justify-content:space-between;margin:0 0 16px}
   h1{font-size:26px;font-weight:700;margin:0;letter-spacing:-0.4px}
@@ -491,20 +491,24 @@ async function loadData(){
 }
 function initBg(){
   const host=document.getElementById("bgfx");if(!host)return;
-  const N=window.innerWidth<520?16:24;
+  const rnd=(a,b)=>a+Math.random()*(b-a);
+  const N=window.innerWidth<520?20:30;
   for(let i=0;i<N;i++){
     const o=elc("div","orb");
-    const size=Math.round(34+Math.random()*140);
+    const size=Math.round(rnd(30,170));
     o.style.width=o.style.height=size+"px";
-    o.style.left=(Math.random()*100).toFixed(1)+"%";
-    o.style.top=(Math.random()*100).toFixed(1)+"%";
-    o.style.opacity=(0.2+Math.random()*0.35).toFixed(2);
-    const dur=(14+Math.random()*22).toFixed(1);
-    o.style.animationDuration=dur+"s";
-    o.style.animationDelay=(-Math.random()*dur).toFixed(1)+"s";
-    o.style.setProperty("--dx",Math.round(Math.random()*120-60)+"px");
-    o.style.setProperty("--dy",Math.round(Math.random()*120-60)+"px");
-    o.style.setProperty("--r",Math.round(Math.random()*40-20)+"deg");
+    o.style.left=rnd(-4,104).toFixed(1)+"%";
+    o.style.top=rnd(-4,104).toFixed(1)+"%";
+    o.style.opacity=rnd(0.18,0.55).toFixed(2);
+    o.style.backgroundPosition=rnd(28,72).toFixed(0)+"% "+rnd(24,64).toFixed(0)+"%";
+    o.style.animationDuration=rnd(9,22).toFixed(1)+"s";
+    o.style.animationDelay=(-rnd(0,22)).toFixed(1)+"s";
+    const set=(k,v)=>o.style.setProperty(k,v);
+    set("--x0",Math.round(rnd(-40,40))+"px");set("--y0",Math.round(rnd(-40,40))+"px");
+    set("--x1",Math.round(rnd(-150,150))+"px");set("--y1",Math.round(rnd(-150,150))+"px");
+    set("--x2",Math.round(rnd(-150,150))+"px");set("--y2",Math.round(rnd(-150,150))+"px");
+    set("--r0",Math.round(rnd(-15,15))+"deg");set("--r1",Math.round(rnd(-45,45))+"deg");set("--r2",Math.round(rnd(-45,45))+"deg");
+    set("--s0",rnd(0.9,1.1).toFixed(2));set("--s1",rnd(0.8,1.25).toFixed(2));set("--s2",rnd(0.8,1.25).toFixed(2));
     host.appendChild(o);
   }
 }
