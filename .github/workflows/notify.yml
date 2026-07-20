@@ -1,0 +1,19 @@
+name: notify-line
+# data/ に睡眠JSONがpushされたら、メイン睡眠を算出してLINE送信する
+on:
+  push:
+    branches: [main]
+    paths:
+      - "data/**"
+  workflow_dispatch: {} # 手動テスト用
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: node scripts/notify.mjs
+        env:
+          LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
