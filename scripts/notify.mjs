@@ -1,6 +1,7 @@
 // 今日(JST)の睡眠JSONを読み、Webページと同じロジックで「メイン睡眠」を算出しLINE送信する。
-// トリガー：push(data/**) / schedule(10:00 JST) / workflow_dispatch。
-// 10時speed速報＋二度寝で伸びたら補正1通。state/ に送信済み量を記録して重複防止。
+// トリガー：push(data/**) / schedule(10:05 JST cron) / workflow_dispatch。
+// 朝のpushは上書きのみ→10:05 cronが最新を送信。昼(LATE_HOUR)以降のpushは初回送信可。
+// 二度寝で伸びたら補正1通。state/ に送信済み量を記録して重複防止。
 // 判定ロジック(SESSION_GAP/MAIN_MIN/ステージ集計)は docs/index.html と一致させること。
 import { readFileSync, existsSync } from "node:fs";
 import { Buffer } from "node:buffer";
@@ -14,6 +15,7 @@ const SESSION_GAP = 120;    // 分。これ以上の空きは別セッション
 const MAIN_MIN = 180;       // 分。これ以上を本睡眠とみなす（昼寝除外）
 const CORRECTION_MIN = 60;  // 分。10時速報よりこれ以上増えたら補正LINEを送る
 const OVERSLEEP_MIN = 540;  // 分。9時間以上なら「めっちゃ寝たな」ヘッダー
+const LATE_HOUR = 11;       // 時(JST)。朝のpushは上書きのみ（送信はcronに一本化）。これ以降のpushは初回送信も可
 const STAGE_MAP = { "深い": "deep", "コア": "core", "レム": "rem", "覚醒": "awake", deep: "deep", core: "core", rem: "rem", awake: "awake" };
 
 const jstNow = () => new Date(Date.now() + 9 * 3600 * 1000);
@@ -138,12 +140,12 @@ if (data.status === "empty") {
 
 const asleep = data.main.asleep;
 if (st.sentAsleep === null) {
-  if (isCron || jstHour() >= 10) {
+  if (isCron || jstHour() >= LATE_HOUR) {
     const over = asleep >= OVERSLEEP_MIN;
     await sendLine(buildText(data.main, over));
     await setState(data.date, asleep, st.sha);
     console.log(`初回送信 asleep=${asleep} over=${over}`);
-  } else console.log(`10時前のpush。cron待ち asleep=${asleep}`);
+  } else console.log(`朝のpush（上書きのみ・送信はcron担当）asleep=${asleep}`);
 } else if (st.sentAsleep >= 0 && asleep > st.sentAsleep + CORRECTION_MIN) {
   await sendLine(buildText(data.main, true));
   await setState(data.date, asleep, st.sha);
