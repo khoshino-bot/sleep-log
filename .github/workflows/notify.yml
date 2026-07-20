@@ -1,10 +1,13 @@
 name: notify-line
-# data/ にpushされたら、メイン睡眠を算出してLINE送信する（10:00と16:00にショートカットが保存→即送信）
+# data/ にpush、または毎朝10:05(JST)に、メイン睡眠を算出してLINE送信する
+# 朝のpushは上書きのみ／送信は10:05のcronに一本化（二重送信防止）。昼以降のpushは初回送信/補正。
 on:
   push:
     branches: [main]
     paths:
       - "data/**"
+  schedule:
+    - cron: "5 1 * * *" # 01:05 UTC = 10:05 JST（GitHubの都合で数分ずれることあり）
   workflow_dispatch: {}
 permissions:
   contents: write # state/ の送信済み記録を書き込むため
