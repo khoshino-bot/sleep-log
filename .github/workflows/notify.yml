@@ -1,11 +1,15 @@
 name: notify-line
-# data/ に睡眠JSONがpushされたら、メイン睡眠を算出してLINE送信する
+# data/ にpush、または毎朝10時(JST)に、メイン睡眠を算出してLINE送信する
 on:
   push:
     branches: [main]
     paths:
       - "data/**"
-  workflow_dispatch: {} # 手動テスト用
+  schedule:
+    - cron: "0 1 * * *" # 01:00 UTC = 10:00 JST（GitHubの都合で数分ずれることあり）
+  workflow_dispatch: {}
+permissions:
+  contents: write # state/ の送信済み記録を書き込むため
 jobs:
   notify:
     runs-on: ubuntu-latest
@@ -17,3 +21,4 @@ jobs:
       - run: node scripts/notify.mjs
         env:
           LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
