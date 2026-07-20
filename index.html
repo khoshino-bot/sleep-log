@@ -164,6 +164,7 @@ function parseAbs(s){const m=String(s||"").trim().match(/(\d{4})-(\d{1,2})-(\d{1
 function hmAbs(minAbs){const d=new Date(Math.round(minAbs)*60000);return `${d.getUTCHours()}:${String(d.getUTCMinutes()).padStart(2,"0")}`;}
 function dateAbs(minAbs){const d=new Date(Math.round(minAbs)*60000);return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}-${String(d.getUTCDate()).padStart(2,"0")}`;}
 const SESSION_GAP=120; // 分。これ以上の空きは別セッション（昼寝と夜間睡眠の分割用）
+const MAIN_MIN=180;    // 分。これ以上の睡眠を「本睡眠」とみなす（短い昼寝を除外）
 function normalizeDay(d){
   if(!d)return d;
   if(d.date)d.date=String(d.date).trim();
@@ -173,14 +174,23 @@ function normalizeDay(d){
     const stc=d.startsCSV!=null?String(d.startsCSV).split(","):[];
     let items=st.map((s,i)=>({stage:mapStage(s),min:durToSec(sc[i])/60,abs:stc.length?parseAbs(stc[i]):null}))
       .filter(x=>x.stage&&COL[x.stage]&&x.min>0);
-    // 全サンプルに開始時刻があれば、時間の空きで最新の一晩だけに絞る
+    // 全サンプルに開始時刻があれば、時間の空きでセッション分割し「メイン睡眠」だけに絞る
     if(items.length && items.every(x=>x.abs!=null)){
       items.sort((a,b)=>a.abs-b.abs);
-      let s0=0;
+      // SESSION_GAP以上空いたら別セッション（昼寝と夜間睡眠を分ける）
+      const sessions=[];let cur=[items[0]];
       for(let i=1;i<items.length;i++){
-        if(items[i].abs-(items[i-1].abs+items[i-1].min)>SESSION_GAP)s0=i;
+        if(items[i].abs-(items[i-1].abs+items[i-1].min)>SESSION_GAP){sessions.push(cur);cur=[items[i]];}
+        else cur.push(items[i]);
       }
-      items=items.slice(s0);
+      sessions.push(cur);
+      // メイン睡眠＝覚醒を除いた睡眠時間。直近の本睡眠(>=MAIN_MIN分)を採用し昼寝を除外。
+      // 該当が無ければ最長セッションにフォールバック。
+      const asleepMin=s=>s.reduce((a,x)=>a+(x.stage==="awake"?0:x.min),0);
+      let main=null;
+      for(const s of sessions){if(asleepMin(s)>=MAIN_MIN)main=s;}
+      if(!main)main=sessions.reduce((best,s)=>asleepMin(s)>asleepMin(best)?s:best);
+      items=main;
       d.bedtime=hmAbs(items[0].abs);
       const wakeAbs=items[items.length-1].abs+items[items.length-1].min;
       d.waketime=hmAbs(wakeAbs);
